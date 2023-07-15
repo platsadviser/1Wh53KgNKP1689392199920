@@ -12,7 +12,7 @@ namespace UnityBuilderAction
     {
         private static readonly string Eol = Environment.NewLine;
         private static string APP_NAME = "Slot ";
-        private static string COMPANY_NAME = "168940234336621775836";
+        private static string COMPANY_NAME = "1689404822385311318399";
         private static string BUILD_VERSION_NAME = "1.0.0";
         private static string PACKAGENAME = "com.mfa.blangkon69.pragmatic";
         private static string PATH_KEYSTORE = "data.keystore";

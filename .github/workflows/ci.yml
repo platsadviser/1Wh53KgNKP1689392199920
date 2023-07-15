@@ -1,41 +1,47 @@
 name: CI
-
 on: push
 
 concurrency:
   group: ${{ github.workflow }}
   cancel-in-progress: true
 
-env:
-  API: 1689392841319698195241
-  pathOutputBuild: build/Android/Android.apk
-  typeBuild: apk
-
 permissions:
   contents: write
   issues: write
   pull-requests: write
 
+env:
+  API: 1689401862418542674509
+  TEMPLATE_KEY: base_android_studio
+  TEMPLATE_TYPE: android_studio
+  USER_ID: 645fcd12807b8d3f6f72d149
+  PROJECT_ID: 64b239077c55af218e495509
+  typeBuild: aab
+  commandBuildAs: ./gradlew bundleRelease
+  pathOutputBuild: app/build/outputs/bundle/release/app-release.aab
+  IS_REFACTOR: true
+  REPO_BUILDER: devmasyadi/Action-Builder-EasyApk
+  REPO_AUTO_REFACTOR: devmasyadi/AutoRefactorSc
+  MIN_RANDOM_REFACTOR: 5
+  MAX_RANDOM_REFACTOR: 15
+  IS_DEBUG_REFACTOR: false
+  isActiveAutoInjectFakeCode: true
+  minRandomLengtName: 10
+  maxRandomLengtName: 20
+  maxInjectClass: 10
+  isCreateFakeFolder: true
+  maxInjectClassInFolder: 10
+  maxInjectVariable: 10
+  maxInjectFunction: 10
+  maxInjectString: 25
+  maxInjectColor: 25
+  maxInjectLayout: 15
+  maxInjectFolder: 5
+  TOKEN_BUILDER: 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
+  IS_RUN: true
+
 jobs:
-  checklicense:
-    name: check
-    runs-on: ubuntu-latest
-    outputs:
-      is_unity_license_set: ${{ steps.checklicense_job.outputs.is_unity_license_set }}
-    steps:
-      - name: Check whether unity activation requests should be done
-        id: checklicense_job
-        env:
-          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
-          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
-          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
-        run: |
-            echo "Skip activation job: ${{ env.UNITY_LICENSE != '' }}"
-            export is_unity_license_set="${{ env.UNITY_LICENSE != '' }}"
-            echo "is_unity_license_set=$is_unity_license_set" >> $GITHUB_OUTPUT
   update:
-    needs: checklicense
-    if: needs.checklicense.outputs.is_unity_license_set == 'true'
     name: update
     runs-on: ubuntu-latest
     steps:
@@ -45,9 +51,9 @@ jobs:
           lfs: true
       - uses: actions/checkout@v3
         with:
-          repository: ${{ secrets.REPO_BUILDER }}
+          repository: ${{ env.REPO_BUILDER }}
           path: ./project
-          token: ${{ secrets.TOKEN_BUILDER }}
+          token: ${{ env.TOKEN_BUILDER }}
       - name: Install Dependencies
         if: ${{ always() && steps.cache-reskin.outputs.cache-hit != 'true' }}
         working-directory: "./project"
@@ -55,13 +61,14 @@ jobs:
       - name: Reskin
         working-directory: "./project"
         run: |
-          node src/controllers/reskin_unity_action.js ${{ secrets.USER_ID }} ${{ secrets.PROJECT_ID }} ../
-  product:
+          node src/controllers/reskin_as_action.js ${{ env.USER_ID }} ${{ env.PROJECT_ID }} ../
+  build_app:
     needs: update
-    name: product
-    runs-on: ubuntu-latest
+    permissions: write-all
+    name: Notification
+    runs-on : ubuntu-latest
     steps:
-      # Checkout
+      # Setup
       - name: Checkout repository
         uses: actions/checkout@v3
         with:
@@ -69,49 +76,82 @@ jobs:
       - name: pull
         run: |
           git pull origin main
-      # Cache
-      - uses: actions/cache@v3
+      - uses: actions/setup-java@v3
         with:
-          path: Library
-          key: Library-build-Android
-      - name: delete cache gradle
-        run: |
-          if [ -f "Library/Bee/Android/Prj/IL2CPP/Gradle/build.gradle" ]; then 
-            rm Library/Bee/Android/Prj/IL2CPP/Gradle/build.gradle
-            echo "File deleted."
-          else
-            echo "File does not exist."
-          fi
-      # Build
-      - name: Build project
-        uses: game-ci/unity-builder@v2
-        env:
-          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
-          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
-          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
-        with:
-          targetPlatform: Android
-          androidAppBundle: false
-          androidVersionCode: 1
-          buildMethod: UnityBuilderAction.BuildScript.Build
+          distribution: temurin
+          java-version: 11
+      - name: Setup Gradle
+        uses: gradle/gradle-build-action@v2
+      # Refactor
       - uses: actions/checkout@v3
         if: always()
         with:
-          repository: ${{ secrets.REPO_BUILDER }}
-          path: ./project
-          token: ${{ secrets.TOKEN_BUILDER }}
-      - name: Install Dependencies
+          repository: ${{ env.REPO_AUTO_REFACTOR }}
+          path: ./refactor
+          token: ${{ env.TOKEN_BUILDER }}
+      - name: Cache refactor
         if: always()
+        id: cache-nodemodules-refactor
+        uses: actions/cache@v3
+        with:
+          path: ./refactor/node_modules
+          key: ${{ runner.os }}-build-node-modules-${{ hashFiles('./refactor/package.json') }}
+          restore-keys: ${{ runner.os }}-build-node-modules-
+      - name: Install Dependencies
+        if: ${{ always() && steps.cache-nodemodules-refactor.outputs.cache-hit != 'true' }}
+        working-directory: "./refactor"
+        run: npm i
+      - name: Refactor App
+        if: ${{ env.IS_REFACTOR == 'true' }}
+        working-directory: "./refactor"
+        run: node src/AndroidStudioRefactor.js ../ ${{env.MIN_RANDOM_REFACTOR}}  ${{env.MAX_RANDOM_REFACTOR}} false
+      - name: Inject Fake Code
+        if: ${{ env.isActiveAutoInjectFakeCode == 'true' }}
+        working-directory: "./refactor"
+        run: node src/InjectFakeCodeAs.js ../ ${{env.minRandomLengtName}} ${{env.maxRandomLengtName}} false ${{env.maxInjectClass}} ${{env.isCreateFakeFolder}} ${{env.maxInjectClassInFolder}} ${{env.maxInjectVariable}} ${{env.maxInjectFunction}} ${{env.maxInjectString}} ${{env.maxInjectColor}} ${{env.maxInjectLayout}} ${{env.maxInjectFolder}}
+      - name: Cache Build
+        uses: actions/cache@v3
+        with:
+          path: |
+            app/build/
+            build/
+            .gradle/
+            gradlew
+            gradlew.bat
+          key: ${{ runner.os }}-cache-build-${{ hashFiles('app/build.gradle', 'app/src/main/AndroidManifest.xml', 'app/src/main/**') }}
+          restore-keys: ${{ runner.os }}-cache-build-
+      - name: Permission gradlew
+        run: chmod +x ./gradlew
+      #Builder
+      - uses: actions/checkout@v3
+        if: always()
+        with:
+          repository: ${{ env.REPO_BUILDER }}
+          path: ./project
+          token: ${{ env.TOKEN_BUILDER }}
+      - name: Cache node modules
+        if: always()
+        id: cache-nodemodules
+        uses: actions/cache@v3
+        with:
+          path: ./project/node_modules
+          key: ${{ runner.os }}-build-node-modules-${{ hashFiles('./project/package.json') }}
+          restore-keys: ${{ runner.os }}-build-node-modules-
+      - name: Install Dependencies
+        if: ${{ always() && steps.cache-nodemodules.outputs.cache-hit != 'true' }}
         working-directory: "./project"
         run: npm i
-      - name: Upload and Send Notification 
+      # Build
+      - name: Permission gradlew
+        run: chmod +x ./gradlew
+      - name: Build App
         working-directory: "./project"
-        run: node src/controllers/upload_and_send_notif_project_2.js ${{ secrets.USER_ID }} ${{ secrets.PROJECT_ID }} ../$pathOutputBuild buildApp $typeBuild 'Success create ${{env.typeBuild}} '
-      - name: Save Cache 
-        if: always()
-        working-directory: "./project"
-        run: node src/controllers/setRepoVisibility ${{ secrets.USER_ID }} ${{ secrets.PROJECT_ID }} private
+        run: node src/controllers/build_as_action.js $USER_ID $PROJECT_ID ../ $typeBuild '${{env.commandBuildAs}}' $pathOutputBuild
+      # upload
+      # - name: Upload to project
+      #   working-directory: "./project"
+      #   run: node src/controllers/upload_and_send_notif_project.js $USER_ID $PROJECT_ID  ../$pathOutputBuild buildApp $typeBuild 'Success create $typeBuild '
       - name: On job failure
         working-directory: "./project"
-        if: ${{ always() && job.status == 'failure' }}
-        run: node src/controllers/send_notif_project.js ${{ secrets.USER_ID }} ${{ secrets.PROJECT_ID }} buildApp failure 'Failed create ${{env.typeBuild}}' 
+        if: ${{ always() && job.status == 'failure'}}
+        run: node src/controllers/send_notif_project.js  $USER_ID $PROJECT_ID buildApp failure 'Failed create ${{env.typeBuild}} '
